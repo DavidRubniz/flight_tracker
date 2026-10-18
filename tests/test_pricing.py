@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from flight_tracker.models import PricePoint
-from flight_tracker.services.pricing import evaluate_price, is_repeat_alert, price_trend
+from flight_tracker.services.pricing import describe_stops, evaluate_price, is_repeat_alert, price_trend
 
 
 def _history(*prices: float) -> list[PricePoint]:
@@ -40,6 +40,19 @@ def test_no_alert_for_normal_price() -> None:
 )
 def test_repeat_alert(price: float, last: float | None, expected: bool) -> None:
     assert is_repeat_alert(price, last) is expected
+
+
+@pytest.mark.parametrize(
+    ("stops", "connections", "expected"),
+    [
+        (0, [], "טיסה ישירה"),
+        (1, ["IST"], "עצירה אחת דרך IST"),
+        (2, ["IST", "VIE"], "2 עצירות דרך IST, VIE"),
+        (1, [], "עצירה אחת"),
+    ],
+)
+def test_describe_stops(stops: int, connections: list[str], expected: str) -> None:
+    assert describe_stops(stops, connections) == expected
 
 
 def test_trend_directions() -> None:

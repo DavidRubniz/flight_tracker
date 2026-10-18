@@ -13,7 +13,7 @@ from flight_tracker.models import AppSettings, Destination, FlightOffer, ScanSta
 from flight_tracker.notifications import Notification, NotificationDispatcher
 from flight_tracker.providers import FlightProvider, ProviderAuthError, ProviderError
 from flight_tracker.regions import airports_for, display_name
-from flight_tracker.services.pricing import evaluate_price, is_repeat_alert
+from flight_tracker.services.pricing import describe_stops, evaluate_price, is_repeat_alert
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +158,7 @@ class PriceTracker:
             return
 
         route = f"{self._origin} → {best.destination_code} ({display_name(best.destination_code)})"
-        stops = "ישירה" if best.stops == 0 else f"{best.stops} עצירות דרך {', '.join(best.connections)}"
+        stops = describe_stops(best.stops, best.connections)
         dates = best.depart_date.strftime("%d/%m/%Y")
         if best.return_date:
             dates += f" – {best.return_date.strftime('%d/%m/%Y')}"

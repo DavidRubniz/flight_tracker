@@ -48,6 +48,15 @@ def is_repeat_alert(price: float, last_alert_price: float | None) -> bool:
     return last_alert_price is not None and price >= last_alert_price
 
 
+def describe_stops(stops: int, connections: Sequence[str]) -> str:
+    """Hebrew description of the connections, e.g. 'עצירה אחת דרך IST'."""
+    if stops == 0:
+        return "טיסה ישירה"
+    label = "עצירה אחת" if stops == 1 else f"{stops} עצירות"
+    # Some providers (e.g. Travelpayouts) report the number of stops but not the airports.
+    return f"{label} דרך {', '.join(connections)}" if connections else label
+
+
 def price_trend(history: Sequence[PricePoint]) -> tuple[Trend, float | None]:
     """Compare the latest price with the previous one. Returns (direction, change %)."""
     if len(history) < 2:
