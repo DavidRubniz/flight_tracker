@@ -69,8 +69,8 @@ class SerpApiProvider(FlightProvider):
         }
         if query.return_date:
             params["return_date"] = query.return_date.isoformat()
-        if query.max_duration_minutes:
-            params["max_duration"] = query.max_duration_minutes  # minutes, per leg
+        # query.max_duration_minutes is deliberately NOT sent as SerpApi's `max_duration`:
+        # with it, Google omits `price_insights` entirely. The tracker filters by duration instead.
 
         payload = await self._request_json("GET", _URL, params=params)
         if error := payload.get("error"):
