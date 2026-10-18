@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="he" dir="rtl" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flight Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ["Heebo", "system-ui", "sans-serif"] },
+          colors: { ink: { 950: "#070b17", 900: "#0c1224", 800: "#121a33", 700: "#1b2547" } },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script defer src="/static/app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+
+<body class="min-h-screen bg-ink-950 font-sans text-slate-100 antialiased" x-data="tracker()" x-init="init()">
+  <div class="bg-glow"></div>
+
+  <!-- ============================== header ============================== -->
+  <header class="sticky top-0 z-30 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3 sm:px-6">
+      <div class="flex items-center gap-3">
+        <div class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-indigo-600 text-xl shadow-lg shadow-sky-500/20">✈</div>
+        <div>
+          <h1 class="text-lg font-extrabold leading-tight">Flight Tracker</h1>
+          <p class="text-xs text-slate-400">מעקב מחירי טיסות מ-<span x-text="meta.origin"></span></p>
+        </div>
+      </div>
+
+      <nav class="order-3 flex w-full gap-1 overflow-x-auto rounded-xl bg-white/5 p-1 sm:order-none sm:mr-6 sm:w-auto">
+        <template x-for="t in tabs" :key="t.id">
+          <button @click="tab = t.id" class="tab-btn" :class="tab === t.id && 'tab-active'">
+            <span x-text="t.icon"></span><span x-text="t.label"></span>
+          </button>
+        </template>
+      </nav>
+
+      <div class="mr-auto flex items-center gap-3">
+        <span class="hidden rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 md:inline"
+              :class="meta.provider === 'mock' && 'border-amber-400/40 text-amber-300'"
+              x-text="meta.provider === 'mock' ? 'נתוני דמו' : 'מקור: ' + meta.provider"></span>
+        <div class="hidden text-left text-xs text-slate-400 lg:block">
+          <template x-if="status.running"><span class="text-sky-300" x-text="'סורק… ' + status.progress"></span></template>
+          <template x-if="!status.running && status.next_run"><span x-text="'סריקה הבאה ' + fmtTime(status.next_run)"></span></template>
+        </div>
+        <button @click="scanAll()" :disabled="status.running" class="btn-primary">
+          <svg x-show="status.running" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3"/></svg>
+          <span x-text="status.running ? 'סורק…' : 'סרוק עכשיו'"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative mx-auto max-w-7xl px-4 py-6 sm:px-6">
+    <!-- scan errors -->
+    <template x-if="status.errors.length">
+      <div class="mb-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+        <b>שגיאות בסריקה האחרונה:</b>
+        <ul class="mt-1 list-disc pr-5"><template x-for="e in status.errors"><li x-text="e"></li></template></ul>
+      </div>
+    </template>
+
+    <!-- ============================== dashboard ============================== -->
+    <section x-show="tab === 'dashboard'" x-transition.opacity>
+      <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div class="kpi"><p class="kpi-label">יעדים במעקב</p><p class="kpi-value" x-text="rows.filter(r => r.destination.enabled).length"></p></div>
+        <div class="kpi"><p class="kpi-label">הזול ביותר כרגע</p>
+          <p class="kpi-value text-emerald-300" x-text="cheapestRow ? money(cheapestRow.current_price) : '—'"></p>
+          <p class="text-xs text-slate-400" x-text="cheapestRow?.destination.name ?? ''"></p></div>
+        <div class="kpi"><p class="kpi-label">מתחת למחיר היעד</p><p class="kpi-value text-sky-300" x-text="rows.filter(r => r.below_target).length"></p></div>
+        <div class="kpi"><p class="kpi-label">התראות ב-24 שעות</p><p class="kpi-value text-amber-300" x-text="recentAlerts"></p></div>
+      </div>
+
+      <template x-if="!rows.length">
+        <div class="card p-10 text-center text-slate-400">אין עדיין נתונים. הוסיפו יעדים בהגדרות ולחצו "סרוק עכשיו".</div>
+      </template>
+
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <template x-for="row in rows" :key="row.destination.id">
+          <article class="card group cursor-pointer p-5 transition hover:-translate-y-0.5 hover:border-sky-400/30"
+                   :class="!row.destination.enabled && 'opacity-50'" @click="openDetails(row)">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <h3 class="text-lg font-bold" x-text="row.destination.name"></h3>
+                <p class="text-xs text-slate-400">
+                  <span x-text="meta.origin + ' → ' + row.destination.code"></span> ·
+                  <span x-text="row.destination.trip_nights ? row.destination.trip_nights + ' לילות' : 'כיוון אחד'"></span> ·
+                  <span x-text="stopsLabel(row.destination.max_stops, true)"></span>
+                </p>
+              </div>
+              <div class="flex flex-col items-end gap-1">
+                <span x-show="row.destination.is_region" class="badge bg-indigo-500/15 text-indigo-300">אזור</span>
+                <span x-show="row.below_target" class="badge bg-emerald-500/15 text-emerald-300">🎯 מתחת ליעד</span>
+              </div>
+            </div>
+
+            <div class="mt-4 flex items-end justify-between">
+              <div>
+                <p class="text-xs text-slate-400">מחיר נוכחי</p>
+                <p class="text-3xl font-extrabold tracking-tight" x-text="row.current_price ? money(row.current_price) : '—'"></p>
+              </div>
+              <div class="text-left">
+                <span class="trend" :class="'trend-' + row.trend" x-text="trendLabel(row)"></span>
+              </div>
+            </div>
+
+            <div class="mt-3 h-14"><canvas :id="'spark-' + row.destination.id"></canvas></div>
+
+            <dl class="mt-3 grid grid-cols-3 gap-2 border-t border-white/5 pt-3 text-xs">
+              <div><dt class="text-slate-500">הנמוך שנצפה</dt><dd class="font-semibold text-emerald-300" x-text="row.lowest_price ? money(row.lowest_price) : '—'"></dd></div>
+              <div><dt class="text-slate-500">ממוצע 30 יום</dt><dd class="font-semibold" x-text="row.average_price ? money(row.average_price) : '—'"></dd></div>
+              <div><dt class="text-slate-500">מחיר יעד</dt><dd class="font-semibold text-sky-300" x-text="row.destination.target_price ? money(row.destination.target_price) : '—'"></dd></div>
+            </dl>
+
+            <template x-if="row.best_offer">
+              <p class="mt-3 truncate rounded-lg bg-white/[0.03] px-3 py-2 text-xs text-slate-300">
+                <span x-text="row.best_offer.airlines.join(', ')"></span> ·
+                <span x-text="routeText(row.best_offer)"></span> ·
+                <span x-text="fmtDate(row.best_offer.depart_date)"></span>
+              </p>
+            </template>
+            <p class="mt-2 text-[11px] text-slate-500" x-text="row.last_checked ? 'נבדק ' + fmtTime(row.last_checked) : 'טרם נסרק'"></p>
+          </article>
+        </template>
+      </div>
+    </section>
+
+    <!-- ============================== flights ============================== -->
+    <section x-show="tab === 'flights'" x-transition.opacity>
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <h2 class="ml-auto text-xl font-bold">הטיסות הזולות ביותר שנמצאו</h2>
+        <select x-model.number="offerFilter.destination" class="input w-auto">
+          <option value="0">כל היעדים</option>
+          <template x-for="d in destinations" :key="d.id"><option :value="d.id" x-text="d.name"></option></template>
+        </select>
+        <select x-model.number="offerFilter.maxStops" class="input w-auto">
+          <option value="9">כל הטיסות</option><option value="0">ישירות בלבד</option><option value="1">עד עצירה אחת</option>
+        </select>
+      </div>
+
+      <div class="space-y-3">
+        <template x-for="o in filteredOffers" :key="o.id">
+          <article class="card flex flex-col gap-4 p-4 md:flex-row md:items-center">
+            <div class="min-w-[9rem]">
+              <p class="text-2xl font-extrabold" x-text="money(o.price, o.currency)"></p>
+              <p class="text-xs text-slate-400" x-text="o.destination_name"></p>
+            </div>
+
+            <div class="flex-1">
+              <div class="flex flex-wrap items-center gap-1 text-sm">
+                <template x-for="(s, i) in o.outbound" :key="i">
+                  <span class="flex items-center gap-1">
+                    <span x-show="i === 0" class="airport" x-text="s.origin"></span>
+                    <span class="leg"><span x-text="s.flight_number || s.airline"></span></span>
+                    <span class="airport" :class="i < o.outbound.length - 1 && 'airport-hub'" x-text="s.destination"></span>
+                  </span>
+                </template>
+              </div>
+              <p class="mt-2 text-xs text-slate-400">
+                <span x-text="o.airlines.join(' · ')"></span> ·
+                <span x-text="stopsLabel(o.stops)"></span>
+                <template x-if="o.duration_minutes"><span x-text="' · ' + duration(o.duration_minutes)"></span></template>
+              </p>
+            </div>
+
+            <div class="text-sm text-slate-300 md:text-left">
+              <p x-text="'הלוך ' + fmtDate(o.depart_date) + (o.outbound[0].departure ? ' ' + hhmm(o.outbound[0].departure) : '')"></p>
+              <p x-show="o.return_date" x-text="'חזור ' + fmtDate(o.return_date)"></p>
+            </div>
+
+            <a x-show="o.booking_url" :href="o.booking_url" target="_blank" rel="noopener" class="btn-ghost">להזמנה ↗</a>
+          </article>
+        </template>
+        <p x-show="!filteredOffers.length" class="card p-8 text-center text-slate-400">לא נמצאו טיסות.</p>
+      </div>
+    </section>
+
+    <!-- ============================== alerts ============================== -->
+    <section x-show="tab === 'alerts'" x-transition.opacity>
+      <h2 class="mb-4 text-xl font-bold">היסטוריית התראות</h2>
+      <div class="space-y-2">
+        <template x-for="a in alerts" :key="a.id">
+          <div class="card flex items-start gap-4 p-4">
+            <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-lg"
+                 :class="a.kind === 'deal' ? 'bg-amber-500/15' : 'bg-emerald-500/15'" x-text="a.kind === 'deal' ? '🔥' : '🎯'"></div>
+            <div class="flex-1">
+              <p class="font-bold"><span x-text="a.destination_name"></span> · <span x-text="money(a.price, a.currency)"></span></p>
+              <p class="whitespace-pre-line text-sm text-slate-400" x-text="a.message"></p>
+            </div>
+            <time class="text-xs text-slate-500" x-text="fmtTime(a.created_at)"></time>
+          </div>
+        </template>
+        <p x-show="!alerts.length" class="card p-8 text-center text-slate-400">עדיין לא נשלחו התראות.</p>
+      </div>
+    </section>
+
+    <!-- ============================== settings ============================== -->
+    <section x-show="tab === 'settings'" x-transition.opacity class="grid gap-6 lg:grid-cols-5">
+      <!-- destinations -->
+      <div class="card p-5 lg:col-span-3">
+        <h2 class="mb-4 text-lg font-bold">יעדים במעקב</h2>
+
+        <form @submit.prevent="addDestination()" class="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-white/[0.03] p-3 sm:grid-cols-6">
+          <label class="col-span-2 sm:col-span-2"><span class="field-label">יעד (IATA) או אזור</span>
+            <input x-model="newDest.code" list="dest-options" required placeholder="LHR / EUROPE" class="input uppercase" />
+            <datalist id="dest-options">
+              <template x-for="(r, key) in meta.regions" :key="key"><option :value="key" x-text="'אזור: ' + r.name"></option></template>
+              <template x-for="(name, code) in meta.airport_names" :key="code"><option :value="code" x-text="name"></option></template>
+            </datalist>
+          </label>
+          <label><span class="field-label">מחיר יעד</span><input x-model.number="newDest.target_price" type="number" min="1" class="input" placeholder="—" /></label>
+          <label><span class="field-label">עצירות</span>
+            <select x-model.number="newDest.max_stops" class="input"><option value="0">ישיר</option><option value="1">עד 1</option><option value="2">עד 2</option></select></label>
+          <label><span class="field-label">לילות (0=כיוון אחד)</span><input x-model.number="newDest.trip_nights" type="number" min="0" max="60" class="input" /></label>
+          <button class="btn-primary self-end justify-center">+ הוסף</button>
+        </form>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-right text-xs text-slate-400">
+              <tr><th class="p-2">יעד</th><th class="p-2">מחיר יעד</th><th class="p-2">עצירות</th><th class="p-2">לילות</th><th class="p-2">פעיל</th><th></th></tr>
+            </thead>
+            <tbody>
+              <template x-for="d in destinations" :key="d.id">
+                <tr class="border-t border-white/5">
+                  <td class="p-2"><b x-text="d.name"></b> <span class="text-xs text-slate-500" x-text="d.code"></span></td>
+                  <td class="p-2"><input type="number" min="1" class="input w-24" :value="d.target_price ?? ''"
+                         @change="updateDestination(d, $event.target.value ? { target_price: +$event.target.value } : { clear_target_price: true })" /></td>
+                  <td class="p-2"><select class="input w-20" :value="d.max_stops" @change="updateDestination(d, { max_stops: +$event.target.value })">
+                    <option value="0">0</option><option value="1">1</option><option value="2">2</option></select></td>
+                  <td class="p-2"><input type="number" min="0" max="60" class="input w-20" :value="d.trip_nights ?? 0"
+                         @change="+$event.target.value ? updateDestination(d, { trip_nights: +$event.target.value, one_way: false }) : updateDestination(d, { one_way: true })" /></td>
+                  <td class="p-2"><button type="button" class="toggle" :class="d.enabled && 'toggle-on'" @click="updateDestination(d, { enabled: !d.enabled })"><span></span></button></td>
+                  <td class="p-2 text-left whitespace-nowrap">
+                    <button class="icon-btn" title="סרוק יעד זה" @click="scanOne(d)">⟳</button>
+                    <button class="icon-btn hover:text-rose-400" title="מחק" @click="removeDestination(d)">✕</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- scan + notification settings -->
+      <form @submit.prevent="saveSettings()" class="card space-y-5 p-5 lg:col-span-2">
+        <h2 class="text-lg font-bold">סריקה והתראות</h2>
+
+        <div class="flex items-center justify-between">
+          <span>סריקה אוטומטית ברקע</span>
+          <button type="button" class="toggle" :class="settings.scheduler_enabled && 'toggle-on'" @click="settings.scheduler_enabled = !settings.scheduler_enabled"><span></span></button>
+        </div>
+        <label class="block"><span class="field-label">תדירות סריקה: כל <b x-text="settings.scan_interval_hours"></b> שעות</span>
+          <input type="range" min="0.5" max="24" step="0.5" x-model.number="settings.scan_interval_hours" class="w-full accent-sky-400" /></label>
+        <label class="block"><span class="field-label">ימים קדימה לבדיקה (מופרד בפסיקים)</span>
+          <input class="input" x-model="offsetsText" placeholder="21, 45, 75" /></label>
+        <label class="block"><span class="field-label">"מציאה" = ירידה של <b x-text="settings.deal_drop_percent"></b>% מהממוצע</span>
+          <input type="range" min="5" max="70" step="1" x-model.number="settings.deal_drop_percent" class="w-full accent-amber-400" /></label>
+        <label class="block"><span class="field-label">לא לחזור על התראה למשך (שעות)</span>
+          <input type="number" min="0" max="168" class="input" x-model.number="settings.alert_cooldown_hours" /></label>
+
+        <div class="space-y-3 border-t border-white/5 pt-4">
+          <p class="field-label">ערוצי התראה</p>
+          <template x-for="ch in channels" :key="ch.key">
+            <div class="flex items-center justify-between">
+              <span><span x-text="ch.label"></span>
+                <span x-show="!meta.channels[ch.id]" class="text-xs text-amber-300"> (לא מוגדר ב-.env)</span></span>
+              <button type="button" class="toggle" :class="settings[ch.key] && 'toggle-on'" :disabled="!meta.channels[ch.id]"
+                      @click="settings[ch.key] = !settings[ch.key]"><span></span></button>
+            </div>
+          </template>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button class="btn-primary flex-1 justify-center">שמור הגדרות</button>
+          <button type="button" class="btn-ghost" @click="testNotifications()">שלח בדיקה</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <!-- ============================== details modal ============================== -->
+  <div x-cloak x-show="details" x-transition.opacity class="fixed inset-0 z-40 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" @click.self="details = null" @keydown.escape.window="details = null">
+    <template x-if="details">
+      <div class="card max-h-[90vh] w-full max-w-3xl overflow-y-auto p-6">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-xl font-bold" x-text="details.destination.name + ' · היסטוריית מחירים'"></h3>
+          <button class="icon-btn" @click="details = null">✕</button>
+        </div>
+        <div class="h-64"><canvas id="detail-chart"></canvas></div>
+        <h4 class="mb-2 mt-6 font-bold">הצעות מהסריקה האחרונה</h4>
+        <div class="space-y-2">
+          <template x-for="o in detailOffers" :key="o.id">
+            <div class="flex items-center gap-3 rounded-lg bg-white/[0.03] p-3 text-sm">
+              <b class="w-20" x-text="money(o.price, o.currency)"></b>
+              <span class="flex-1 truncate" x-text="routeText(o) + ' · ' + o.airlines.join(', ')"></span>
+              <span class="text-slate-400" x-text="fmtDate(o.depart_date)"></span>
+              <a x-show="o.booking_url" :href="o.booking_url" target="_blank" rel="noopener" class="text-sky-300">↗</a>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- toast -->
+  <div x-cloak x-show="toast" x-transition class="fixed bottom-5 left-5 z-50 rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm shadow-2xl" x-text="toast"></div>
+</body>
+</html>

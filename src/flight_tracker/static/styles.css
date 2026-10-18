@@ -1,0 +1,68 @@
+/* Component styles shared across the UI (Tailwind utilities cover the rest). */
+[x-cloak] { display: none !important; }
+
+.bg-glow {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
+    radial-gradient(50rem 30rem at 0% 110%, rgba(99, 102, 241, 0.12), transparent 60%);
+}
+
+.card {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(180deg, rgba(27, 37, 71, 0.55), rgba(18, 26, 51, 0.55));
+  backdrop-filter: blur(12px);
+}
+
+.kpi { border-radius: 1rem; border: 1px solid rgba(255,255,255,.07); background: rgba(18,26,51,.6); padding: 1rem 1.25rem; }
+.kpi-label { font-size: .75rem; color: #94a3b8; }
+.kpi-value { margin-top: .25rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.02em; }
+
+.tab-btn {
+  display: flex; align-items: center; gap: .4rem; white-space: nowrap;
+  padding: .45rem .9rem; border-radius: .6rem; font-size: .875rem; color: #94a3b8; transition: all .15s;
+}
+.tab-btn:hover { color: #e2e8f0; }
+.tab-active { background: rgba(56, 189, 248, .15); color: #e0f2fe; }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .55rem 1rem; border-radius: .7rem; font-weight: 600; font-size: .875rem;
+  background: linear-gradient(135deg, #38bdf8, #6366f1); color: white;
+  box-shadow: 0 8px 24px -8px rgba(56, 189, 248, .5); transition: filter .15s, opacity .15s;
+}
+.btn-primary:hover { filter: brightness(1.1); }
+.btn-primary:disabled { opacity: .6; cursor: progress; }
+.btn-ghost {
+  display: inline-flex; align-items: center; padding: .5rem .9rem; border-radius: .7rem; font-size: .875rem;
+  border: 1px solid rgba(255, 255, 255, .12); color: #e2e8f0; transition: background .15s;
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, .06); }
+.icon-btn { padding: .25rem .5rem; border-radius: .5rem; color: #94a3b8; }
+.icon-btn:hover { background: rgba(255, 255, 255, .06); color: #e2e8f0; }
+
+.input {
+  width: 100%; padding: .5rem .7rem; border-radius: .6rem; font-size: .875rem;
+  background: rgba(7, 11, 23, .6); border: 1px solid rgba(255, 255, 255, .1); color: #f1f5f9; outline: none;
+}
+.input:focus { border-color: rgba(56, 189, 248, .6); box-shadow: 0 0 0 3px rgba(56, 189, 248, .15); }
+.field-label { display: block; margin-bottom: .3rem; font-size: .75rem; color: #94a3b8; }
+
+.badge { border-radius: 999px; padding: .15rem .55rem; font-size: .7rem; font-weight: 600; }
+
+.trend { border-radius: 999px; padding: .2rem .6rem; font-size: .75rem; font-weight: 700; }
+.trend-down { background: rgba(16, 185, 129, .15); color: #6ee7b7; }
+.trend-up { background: rgba(244, 63, 94, .15); color: #fda4af; }
+.trend-flat, .trend-unknown { background: rgba(148, 163, 184, .12); color: #cbd5e1; }
+
+.airport { font-weight: 700; padding: .1rem .45rem; border-radius: .4rem; background: rgba(56, 189, 248, .12); color: #bae6fd; }
+.airport-hub { background: rgba(251, 191, 36, .12); color: #fde68a; }
+.leg { display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; color: #64748b; }
+.leg::before, .leg::after { content: ""; width: 1rem; height: 1px; background: #334155; }
+
+.toggle { position: relative; width: 2.6rem; height: 1.45rem; border-radius: 999px; background: #334155; transition: background .2s; }
+.toggle span { position: absolute; top: .2rem; right: .2rem; width: 1.05rem; height: 1.05rem; border-radius: 999px; background: white; transition: transform .2s; }
+.toggle-on { background: #0ea5e9; }
+.toggle-on span { transform: translateX(-1.15rem); }
+.toggle:disabled { opacity: .4; cursor: not-allowed; }
