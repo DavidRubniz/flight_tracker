@@ -90,10 +90,11 @@ async def test_serpapi_tolerates_missing_or_odd_insights(client: httpx.AsyncClie
 
 
 @respx.mock
-async def test_serpapi_sends_max_duration(client: httpx.AsyncClient) -> None:
+async def test_serpapi_does_not_send_max_duration(client: httpx.AsyncClient) -> None:
+    # Google drops price_insights when max_duration is set; the tracker filters instead.
     route = respx.get(SERPAPI_URL).respond(json=SERPAPI_PAYLOAD)
     await SerpApiProvider(client, "key").search(QUERY.model_copy(update={"max_duration_minutes": 720}))
-    assert route.calls.last.request.url.params["max_duration"] == "720"
+    assert "max_duration" not in route.calls.last.request.url.params
 
 
 @respx.mock
