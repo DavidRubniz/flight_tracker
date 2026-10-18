@@ -254,6 +254,24 @@ function tracker() {
       const last = offer.outbound.at(-1)?.destination ?? offer.destination_code;
       return [this.meta.origin, ...hubs, last].join(" → ");
     },
+    levelLabel: (level) => ({ low: "Google: מחיר נמוך", typical: "Google: מחיר רגיל", high: "Google: מחיר גבוה" })[level] ?? "",
+    levelClass: (level) => ({
+      low: "bg-emerald-500/15 text-emerald-300",
+      typical: "bg-slate-500/15 text-slate-300",
+      high: "bg-rose-500/15 text-rose-300",
+    })[level] ?? "",
+    // Marker position (0-100) on a track where the typical range covers the middle 2/3.
+    rangePosition(row) {
+      const { typical_low: low, typical_high: high } = row.insights;
+      const span = Math.max(high - low, 1);
+      const position = ((row.current_price - (low - span / 4)) / (span * 1.5)) * 100;
+      return Math.min(98, Math.max(2, position));
+    },
+    alertStyle: (kind) => ({
+      target: { icon: "🎯", cls: "bg-emerald-500/15" },
+      deal: { icon: "🔥", cls: "bg-amber-500/15" },
+      google_low: { icon: "📉", cls: "bg-sky-500/15" },
+    })[kind] ?? { icon: "🔔", cls: "bg-white/5" },
     trendLabel(row) {
       if (row.change_percent == null) return "—";
       const arrow = { up: "▲", down: "▼", flat: "■" }[row.trend] ?? "";

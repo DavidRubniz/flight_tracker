@@ -61,6 +61,19 @@
 .leg { display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; color: #64748b; }
 .leg::before, .leg::after { content: ""; width: 1rem; height: 1px; background: #334155; }
 
+/* Google typical-range bar: the band (typical range) spans the middle 2/3 of the track */
+.range-track { position: relative; height: .4rem; border-radius: 999px; background: rgba(148, 163, 184, .15); }
+.range-band {
+  position: absolute; top: 0; bottom: 0; left: 16.67%; width: 66.66%; border-radius: 999px;
+  background: linear-gradient(90deg, rgba(16, 185, 129, .55), rgba(148, 163, 184, .45), rgba(244, 63, 94, .55));
+}
+.range-marker {
+  position: absolute; top: 50%; width: .8rem; height: .8rem; border-radius: 999px; transform: translate(-50%, -50%);
+  background: white; box-shadow: 0 0 0 3px rgba(56, 189, 248, .6);
+}
+.range-labels { position: relative; height: 1rem; margin-top: .25rem; font-size: 11px; color: #94a3b8; }
+.range-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
 .toggle { position: relative; width: 2.6rem; height: 1.45rem; border-radius: 999px; background: #334155; transition: background .2s; }
 .toggle span { position: absolute; top: .2rem; right: .2rem; width: 1.05rem; height: 1.05rem; border-radius: 999px; background: white; transition: transform .2s; }
 .toggle-on { background: #0ea5e9; }
