@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 import threading
 import webbrowser
 
@@ -11,6 +12,7 @@ import uvicorn
 
 from flight_tracker.api import create_app
 from flight_tracker.config import get_config
+from flight_tracker.providers import ProviderConfigError, provider_key
 
 
 def main() -> None:
@@ -20,6 +22,10 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     config = get_config()
+    try:
+        provider_key(config)  # fail fast, before the server starts
+    except ProviderConfigError as exc:
+        sys.exit(f"Configuration error: {exc}")
     url = f"http://{config.app_host}:{config.app_port}"
     if not args.no_browser:
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()

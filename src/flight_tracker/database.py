@@ -83,7 +83,6 @@ _DEFAULT_DESTINATIONS: tuple[DestinationCreate, ...] = (
     DestinationCreate(code="LHR", target_price=350, max_stops=1, trip_nights=7),
     DestinationCreate(code="BKK", target_price=650, max_stops=1, trip_nights=14),
     DestinationCreate(code="JFK", target_price=750, max_stops=1, trip_nights=10),
-    DestinationCreate(code="EUROPE", max_stops=1, trip_nights=5),
 )
 
 
@@ -288,6 +287,10 @@ class Database:
             (destination_id, since),
         )
         return [PricePoint(at=_to_dt(r["checked_at"]), price=r["min_price"]) for r in rows]
+
+    def last_scan_at(self) -> datetime | None:
+        rows = self._query("SELECT MAX(checked_at) AS last FROM snapshots")
+        return _to_dt(rows[0]["last"]) if rows and rows[0]["last"] else None
 
     def lowest_price(self, destination_id: int) -> tuple[float, datetime] | None:
         rows = self._query(
