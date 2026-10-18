@@ -4,8 +4,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from flight_tracker.models import PricePoint
-from flight_tracker.services.pricing import describe_stops, evaluate_price, is_repeat_alert, price_trend
+from flight_tracker.models import AppSettings, PriceInsights, PricePoint
+from flight_tracker.services.pricing import (
+    PriceContext,
+    describe_stops,
+    evaluate_price,
+    is_repeat_alert,
+    price_trend,
+)
+
+SETTINGS = AppSettings(deal_drop_percent=25, alert_on_google_low=True)
+GOOGLE_LOW = PriceInsights(price_level="low", typical_low=430, typical_high=670)
 
 
 def _history(*prices: float) -> list[PricePoint]:
@@ -14,24 +23,45 @@ def _history(*prices: float) -> list[PricePoint]:
 
 
 def test_target_price_hit() -> None:
-    decision = evaluate_price(199, target_price=200, average_price=None, sample_size=0, deal_drop_percent=25)
+    decision = evaluate_price(199, PriceContext(target_price=200), SETTINGS)
     assert decision is not None
     assert decision.kind == "target"
 
 
 def test_deal_requires_enough_history() -> None:
-    assert (
-        evaluate_price(100, target_price=None, average_price=300, sample_size=2, deal_drop_percent=25) is None
-    )
-    decision = evaluate_price(100, target_price=None, average_price=300, sample_size=3, deal_drop_percent=25)
+    assert evaluate_price(100, PriceContext(average_price=300, sample_size=2), SETTINGS) is None
+    decision = evaluate_price(100, PriceContext(average_price=300, sample_size=3), SETTINGS)
     assert decision is not None
     assert decision.kind == "deal"
 
 
 def test_no_alert_for_normal_price() -> None:
-    assert (
-        evaluate_price(290, target_price=200, average_price=300, sample_size=10, deal_drop_percent=25) is None
-    )
+    context = PriceContext(target_price=200, average_price=300, sample_size=10)
+    assert evaluate_price(290, context, SETTINGS) is None
+
+
+def test_google_low_alerts_without_any_history() -> None:
+    decision = evaluate_price(400, PriceContext(insights=GOOGLE_LOW), SETTINGS)
+    assert decision is not None
+    assert decision.kind == "google_low"
+    assert "430–670" in decision.reason
+
+
+@pytest.mark.parametrize("level", ["typical", "high", None])
+def test_google_other_levels_do_not_alert(level: str | None) -> None:
+    insights = PriceInsights.model_validate({"price_level": level, "typical_low": 430, "typical_high": 670})
+    assert evaluate_price(500, PriceContext(insights=insights), SETTINGS) is None
+
+
+def test_google_low_can_be_disabled() -> None:
+    settings = SETTINGS.model_copy(update={"alert_on_google_low": False})
+    assert evaluate_price(400, PriceContext(insights=GOOGLE_LOW), settings) is None
+
+
+def test_target_rule_wins_over_google_low() -> None:
+    decision = evaluate_price(400, PriceContext(target_price=450, insights=GOOGLE_LOW), SETTINGS)
+    assert decision is not None
+    assert decision.kind == "target"
 
 
 @pytest.mark.parametrize(

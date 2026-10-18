@@ -10,12 +10,13 @@ from typing import Any
 
 import httpx
 
-from flight_tracker.models import FlightOffer, SearchQuery, Segment
+from flight_tracker.models import FlightOffer, PriceInsights, SearchQuery, SearchResult, Segment
 from flight_tracker.providers.base import FlightProvider, ProviderError
 
 _URL = "https://serpapi.com/search.json"
 # SerpApi "stops": 1 = nonstop only, 2 = up to 1 stop, 3 = up to 2 stops
 _STOPS_PARAM: dict[int, int] = {0: 1, 1: 2, 2: 3}
+_PRICE_LEVELS = ("low", "typical", "high")
 
 
 def _parse_time(raw: object) -> datetime | None:
@@ -27,6 +28,24 @@ def _parse_time(raw: object) -> datetime | None:
         return None
 
 
+def _parse_insights(raw: object) -> PriceInsights | None:
+    """``price_insights`` e.g. {"price_level": "typical", "typical_price_range": [430, 670]}."""
+    if not isinstance(raw, dict):
+        return None
+    level = raw.get("price_level")
+    price_range = raw.get("typical_price_range")
+    low, high = (
+        (float(price_range[0]), float(price_range[1]))
+        if isinstance(price_range, list) and len(price_range) == 2
+        else (None, None)
+    )
+    return PriceInsights(
+        price_level=level if level in _PRICE_LEVELS else None,
+        typical_low=low,
+        typical_high=high,
+    )
+
+
 class SerpApiProvider(FlightProvider):
     name = "serpapi"
 
@@ -34,7 +53,7 @@ class SerpApiProvider(FlightProvider):
         super().__init__(client)
         self._api_key = api_key
 
-    async def search(self, query: SearchQuery) -> list[FlightOffer]:
+    async def search(self, query: SearchQuery) -> SearchResult:
         params: dict[str, str | int] = {
             "engine": "google_flights",
             "departure_id": query.origin,
@@ -54,13 +73,16 @@ class SerpApiProvider(FlightProvider):
         payload = await self._request_json("GET", _URL, params=params)
         if error := payload.get("error"):
             if "hasn't returned any results" in str(error):
-                return []
+                return SearchResult()
             raise ProviderError(f"serpapi: {error}")
 
         booking_url = (payload.get("search_metadata") or {}).get("google_flights_url")
         raw_items: list[Any] = [*(payload.get("best_flights") or []), *(payload.get("other_flights") or [])]
         offers = [o for item in raw_items if (o := self._parse(item, query, booking_url))]
-        return [o for o in offers if o.stops <= query.max_stops]
+        return SearchResult(
+            offers=[o for o in offers if o.stops <= query.max_stops],
+            insights=_parse_insights(payload.get("price_insights")),
+        )
 
     def _parse(self, item: dict[str, Any], query: SearchQuery, booking_url: str | None) -> FlightOffer | None:
         price = item.get("price")

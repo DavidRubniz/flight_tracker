@@ -50,6 +50,22 @@ class FlightOffer(BaseModel):
         return (self.destination_code, self.depart_date.isoformat(), flights, self.price)
 
 
+PriceLevel = Literal["low", "typical", "high"]
+
+
+class PriceInsights(BaseModel):
+    """The provider's own view of the route's price (Google Flights "price insights")."""
+
+    price_level: PriceLevel | None = None
+    typical_low: float | None = None
+    typical_high: float | None = None
+
+
+class SearchResult(BaseModel):
+    offers: list[FlightOffer] = Field(default_factory=list)
+    insights: PriceInsights | None = None
+
+
 class SearchQuery(BaseModel):
     origin: str
     destination: str
@@ -116,6 +132,7 @@ class AppSettings(BaseModel):
     date_offsets_days: list[int] = Field(default_factory=lambda: [45])
     deal_drop_percent: float = Field(default=25.0, ge=5, le=90)
     alert_cooldown_hours: float = Field(default=24.0, ge=0, le=168)
+    alert_on_google_low: bool = True
     notify_desktop: bool = True
     notify_telegram: bool = False
     notify_email: bool = False
@@ -158,9 +175,10 @@ class DashboardRow(BaseModel):
     last_checked: datetime | None
     best_offer: StoredOffer | None
     below_target: bool
+    insights: PriceInsights | None
 
 
-AlertKind = Literal["target", "deal"]
+AlertKind = Literal["target", "deal", "google_low"]
 
 
 class AlertRecord(BaseModel):

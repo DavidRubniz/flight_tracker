@@ -3,7 +3,14 @@ from __future__ import annotations
 import httpx
 
 from flight_tracker.database import Database
-from flight_tracker.models import DestinationCreate, FlightOffer, SearchQuery, Segment
+from flight_tracker.models import (
+    DestinationCreate,
+    FlightOffer,
+    PriceInsights,
+    SearchQuery,
+    SearchResult,
+    Segment,
+)
 from flight_tracker.notifications import Notification
 from flight_tracker.providers import FlightProvider, ProviderAuthError, ProviderError
 from flight_tracker.services.tracker import PriceTracker
@@ -12,17 +19,23 @@ from flight_tracker.services.tracker import PriceTracker
 class FakeProvider(FlightProvider):
     name = "fake"
 
-    def __init__(self, price: float = 100, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        price: float = 100,
+        error: Exception | None = None,
+        insights: PriceInsights | None = None,
+    ) -> None:
         super().__init__(httpx.AsyncClient())
         self.price = price
         self.error = error
+        self.insights = insights
         self.calls: list[SearchQuery] = []
 
-    async def search(self, query: SearchQuery) -> list[FlightOffer]:
+    async def search(self, query: SearchQuery) -> SearchResult:
         self.calls.append(query)
         if self.error:
             raise self.error
-        return [
+        offers = [
             FlightOffer(
                 provider=self.name,
                 destination_code=query.destination,
@@ -35,6 +48,7 @@ class FakeProvider(FlightProvider):
                 return_date=query.return_date,
             )
         ]
+        return SearchResult(offers=offers, insights=self.insights)
 
 
 class FakeNotifier:
@@ -91,3 +105,14 @@ async def test_auth_error_aborts_scan(db: Database) -> None:
     await tracker.scan_all()
     assert tracker.status.errors == ["bad key"]
     assert not tracker.status.running
+
+
+async def test_google_insights_are_stored_and_alert_on_first_scan(db: Database) -> None:
+    dest_id = _only(db, "ATH", target=None)
+    insights = PriceInsights(price_level="low", typical_low=150, typical_high=220)
+    notifier = FakeNotifier()
+    await _tracker(db, FakeProvider(price=120, insights=insights), notifier).scan_all()
+
+    assert db.latest_insights(dest_id) == insights
+    assert [a.kind for a in db.list_alerts()] == ["google_low"]
+    assert len(notifier.sent) == 1

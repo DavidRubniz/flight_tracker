@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from flight_tracker.config import Config, ProviderName
-from flight_tracker.models import SearchQuery
+from flight_tracker.models import PriceInsights, SearchQuery
 from flight_tracker.providers import (
     ProviderAuthError,
     ProviderConfigError,
@@ -46,6 +46,7 @@ SERPAPI_PAYLOAD: dict[str, Any] = {
         }
     ],
     "other_flights": [{"price": 380, "flights": [{"airline": "A"}, {"airline": "B"}, {"airline": "C"}]}],
+    "price_insights": {"lowest_price": 412, "price_level": "low", "typical_price_range": [430, 670]},
 }
 
 
@@ -66,13 +67,26 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
 @respx.mock
 async def test_serpapi_parses_connections_and_filters_stops(client: httpx.AsyncClient) -> None:
     respx.get(SERPAPI_URL).respond(json=SERPAPI_PAYLOAD)
-    offers = await SerpApiProvider(client, "key").search(QUERY)
+    result = await SerpApiProvider(client, "key").search(QUERY)
+    offers = result.offers
 
     assert len(offers) == 1  # the 2-stop offer is filtered out (max_stops=1)
     offer = offers[0]
     assert offer.price == 412
     assert offer.connections == ["IST"]
     assert offer.outbound[0].flight_number == "TK785"
+    assert result.insights == PriceInsights(price_level="low", typical_low=430, typical_high=670)
+
+
+@respx.mock
+async def test_serpapi_tolerates_missing_or_odd_insights(client: httpx.AsyncClient) -> None:
+    payload = {**SERPAPI_PAYLOAD, "price_insights": {"price_level": "unusual"}}
+    respx.get(SERPAPI_URL).respond(json=payload)
+    insights = (await SerpApiProvider(client, "key").search(QUERY)).insights
+    assert insights == PriceInsights()
+
+    respx.get(SERPAPI_URL).respond(json={k: v for k, v in SERPAPI_PAYLOAD.items() if k != "price_insights"})
+    assert (await SerpApiProvider(client, "key").search(QUERY)).insights is None
 
 
 @respx.mock
@@ -96,7 +110,7 @@ async def test_network_error_recovers(client: httpx.AsyncClient) -> None:
     respx.get(SERPAPI_URL).mock(
         side_effect=[httpx.ConnectError("boom"), httpx.Response(200, json=SERPAPI_PAYLOAD)]
     )
-    assert await SerpApiProvider(client, "key").search(QUERY)
+    assert (await SerpApiProvider(client, "key").search(QUERY)).offers
 
 
 def test_missing_key_is_a_config_error(config: Config) -> None:
@@ -109,5 +123,7 @@ def test_missing_key_is_a_config_error(config: Config) -> None:
 async def test_mock_provider_is_deterministic(client: httpx.AsyncClient) -> None:
     provider = MockProvider(client)
     first, second = await provider.search(QUERY), await provider.search(QUERY)
-    assert [o.price for o in first] == [o.price for o in second]
-    assert all(o.stops <= QUERY.max_stops for o in first)
+    assert [o.price for o in first.offers] == [o.price for o in second.offers]
+    assert all(o.stops <= QUERY.max_stops for o in first.offers)
+    assert first.insights is not None
+    assert first.insights.price_level in ("low", "typical", "high")

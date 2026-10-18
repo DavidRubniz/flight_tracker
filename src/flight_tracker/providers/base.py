@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 
 import httpx
 
-from flight_tracker.models import FlightOffer, SearchQuery
+from flight_tracker.models import SearchQuery, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,8 @@ class FlightProvider(ABC):
         self._client = client
 
     @abstractmethod
-    async def search(self, query: SearchQuery) -> list[FlightOffer]:
-        """Return offers for a single origin/destination/date query (may be empty)."""
+    async def search(self, query: SearchQuery) -> SearchResult:
+        """Return offers (possibly none) and, if the source has them, price insights."""
 
     async def _request_json(
         self,
