@@ -69,6 +69,8 @@ class SerpApiProvider(FlightProvider):
         }
         if query.return_date:
             params["return_date"] = query.return_date.isoformat()
+        if query.max_duration_minutes:
+            params["max_duration"] = query.max_duration_minutes  # minutes, per leg
 
         payload = await self._request_json("GET", _URL, params=params)
         if error := payload.get("error"):
