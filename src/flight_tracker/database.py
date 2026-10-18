@@ -289,6 +289,10 @@ class Database:
         )
         return [PricePoint(at=_to_dt(r["checked_at"]), price=r["min_price"]) for r in rows]
 
+    def last_scan_at(self) -> datetime | None:
+        rows = self._query("SELECT MAX(checked_at) AS last FROM snapshots")
+        return _to_dt(rows[0]["last"]) if rows and rows[0]["last"] else None
+
     def lowest_price(self, destination_id: int) -> tuple[float, datetime] | None:
         rows = self._query(
             "SELECT min_price, checked_at FROM snapshots WHERE destination_id = ? "

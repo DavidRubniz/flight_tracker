@@ -36,7 +36,8 @@ class Container:
         provider = create_provider(config, http)
         notifier = NotificationDispatcher(config, http, db.get_settings)
         tracker = PriceTracker(db, provider, notifier, origin=config.origin_airport, currency=config.currency)
-        return cls(config, db, http, provider, notifier, tracker, ScanScheduler(tracker))
+        scheduler = ScanScheduler(tracker, db.last_scan_at)
+        return cls(config, db, http, provider, notifier, tracker, scheduler)
 
     def start(self) -> None:
         self.scheduler.start(self.db.get_settings())
