@@ -1,0 +1,7 @@
+# Always LF in the repo and in working copies, regardless of core.autocrlf
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
