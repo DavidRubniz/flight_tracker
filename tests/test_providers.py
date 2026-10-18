@@ -8,8 +8,14 @@ import httpx
 import pytest
 import respx
 
+from flight_tracker.config import Config, ProviderName
 from flight_tracker.models import SearchQuery
-from flight_tracker.providers import ProviderAuthError, ProviderUnavailableError
+from flight_tracker.providers import (
+    ProviderAuthError,
+    ProviderConfigError,
+    ProviderUnavailableError,
+    provider_key,
+)
 from flight_tracker.providers.base import FlightProvider
 from flight_tracker.providers.mock import MockProvider
 from flight_tracker.providers.serpapi import SerpApiProvider
@@ -91,6 +97,13 @@ async def test_network_error_recovers(client: httpx.AsyncClient) -> None:
         side_effect=[httpx.ConnectError("boom"), httpx.Response(200, json=SERPAPI_PAYLOAD)]
     )
     assert await SerpApiProvider(client, "key").search(QUERY)
+
+
+def test_missing_key_is_a_config_error(config: Config) -> None:
+    serpapi_config = config.model_copy(update={"flight_provider": ProviderName.SERPAPI})
+    with pytest.raises(ProviderConfigError, match="SERPAPI_API_KEY"):
+        provider_key(serpapi_config)
+    assert provider_key(config) == ""  # mock needs no key
 
 
 async def test_mock_provider_is_deterministic(client: httpx.AsyncClient) -> None:
