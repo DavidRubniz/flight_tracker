@@ -111,8 +111,9 @@ class DestinationUpdate(BaseModel):
 
 class AppSettings(BaseModel):
     scheduler_enabled: bool = True
-    scan_interval_hours: float = Field(default=6.0, ge=0.25, le=72)
-    date_offsets_days: list[int] = Field(default_factory=lambda: [21, 45, 75])
+    # Conservative defaults: every (airport x date offset) pair is one paid API search.
+    scan_interval_hours: float = Field(default=12.0, ge=0.25, le=72)
+    date_offsets_days: list[int] = Field(default_factory=lambda: [45])
     deal_drop_percent: float = Field(default=25.0, ge=5, le=90)
     alert_cooldown_hours: float = Field(default=24.0, ge=0, le=168)
     notify_desktop: bool = True

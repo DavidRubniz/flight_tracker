@@ -83,7 +83,6 @@ _DEFAULT_DESTINATIONS: tuple[DestinationCreate, ...] = (
     DestinationCreate(code="LHR", target_price=350, max_stops=1, trip_nights=7),
     DestinationCreate(code="BKK", target_price=650, max_stops=1, trip_nights=14),
     DestinationCreate(code="JFK", target_price=750, max_stops=1, trip_nights=10),
-    DestinationCreate(code="EUROPE", max_stops=1, trip_nights=5),
 )
 
 
