@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from flight_tracker.models import FlightOffer, SearchQuery, Segment
+from flight_tracker.models import FlightOffer, SearchQuery, SearchResult, Segment
 from flight_tracker.providers.base import FlightProvider, ProviderError
 
 _URL = "https://api.duffel.com/air/offer_requests"
@@ -35,7 +35,7 @@ class DuffelProvider(FlightProvider):
             "Content-Type": "application/json",
         }
 
-    async def search(self, query: SearchQuery) -> list[FlightOffer]:
+    async def search(self, query: SearchQuery) -> SearchResult:
         slices: list[dict[str, str]] = [
             {
                 "origin": query.origin,
@@ -71,7 +71,7 @@ class DuffelProvider(FlightProvider):
             raise ProviderError("duffel: response has no 'data' object")
         offers = [o for raw in (data.get("offers") or []) if (o := self._parse(raw, query))]
         offers.sort(key=lambda o: o.price)
-        return offers[:_MAX_OFFERS]
+        return SearchResult(offers=offers[:_MAX_OFFERS])
 
     @staticmethod
     def _segments(slice_obj: dict[str, Any]) -> list[Segment]:

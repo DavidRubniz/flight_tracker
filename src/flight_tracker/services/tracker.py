@@ -9,11 +9,25 @@ from collections.abc import Iterable
 from datetime import date, timedelta
 
 from flight_tracker.database import Database, utcnow
-from flight_tracker.models import AppSettings, Destination, FlightOffer, ScanStatus, SearchQuery
+from flight_tracker.models import (
+    AppSettings,
+    Destination,
+    FlightOffer,
+    PriceInsights,
+    ScanStatus,
+    SearchQuery,
+    SearchResult,
+)
 from flight_tracker.notifications import Notification, NotificationDispatcher
 from flight_tracker.providers import FlightProvider, ProviderAuthError, ProviderError
 from flight_tracker.regions import airports_for, display_name
-from flight_tracker.services.pricing import describe_stops, evaluate_price, is_repeat_alert
+from flight_tracker.services.pricing import (
+    AlertDecision,
+    PriceContext,
+    describe_stops,
+    evaluate_price,
+    is_repeat_alert,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +111,7 @@ class PriceTracker:
                     currency=self._currency,
                 )
 
-    async def _search(self, query: SearchQuery) -> list[FlightOffer]:
+    async def _search(self, query: SearchQuery) -> SearchResult:
         async with self._semaphore:
             return await self._provider.search(query)
 
@@ -106,6 +120,8 @@ class PriceTracker:
         results = await asyncio.gather(*(self._search(q) for q in queries), return_exceptions=True)
 
         offers: dict[tuple[str, str, str, float], FlightOffer] = {}
+        # Insights describe one route/date, so keep those of the search that found the cheapest offer.
+        best_insights: tuple[float, PriceInsights] | None = None
         failures = 0
         for query, result in zip(queries, results, strict=True):
             if isinstance(result, ProviderAuthError):
@@ -120,8 +136,12 @@ class PriceTracker:
                 failures += 1
                 logger.exception("Unexpected error for %s", query.destination, exc_info=result)
                 continue
-            for offer in result:
+            for offer in result.offers:
                 offers.setdefault(offer.dedupe_key, offer)
+            if result.insights and result.offers:
+                cheapest = min(o.price for o in result.offers)
+                if best_insights is None or cheapest < best_insights[0]:
+                    best_insights = (cheapest, result.insights)
 
         if failures:
             self.status.errors.append(f"{destination.name}: {failures}/{len(queries)} חיפושים נכשלו")
@@ -130,28 +150,27 @@ class PriceTracker:
             return
 
         ranked = sorted(offers.values(), key=lambda o: o.price)[:OFFERS_KEPT_PER_SCAN]
+        insights = best_insights[1] if best_insights else None
         # Compute the baseline *before* storing the new snapshot.
         average, samples = self._db.average_price(destination.id)
-        self._db.record_scan(destination.id, ranked)
-        await self._maybe_alert(destination, ranked[0], average, samples, settings)
-
-    async def _maybe_alert(
-        self,
-        destination: Destination,
-        best: FlightOffer,
-        average: float | None,
-        samples: int,
-        settings: AppSettings,
-    ) -> None:
-        decision = evaluate_price(
-            best.price,
+        self._db.record_scan(destination.id, ranked, insights)
+        context = PriceContext(
             target_price=destination.target_price,
             average_price=average,
             sample_size=samples,
-            deal_drop_percent=settings.deal_drop_percent,
+            insights=insights,
         )
-        if decision is None:
-            return
+        decision = evaluate_price(ranked[0].price, context, settings)
+        if decision is not None:
+            await self._alert(destination, ranked[0], decision, settings)
+
+    async def _alert(
+        self,
+        destination: Destination,
+        best: FlightOffer,
+        decision: AlertDecision,
+        settings: AppSettings,
+    ) -> None:
         if is_repeat_alert(
             best.price, self._db.last_alert_price(destination.id, settings.alert_cooldown_hours)
         ):

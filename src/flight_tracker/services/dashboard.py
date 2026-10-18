@@ -26,6 +26,7 @@ def build_row(db: Database, destination: Destination, best_offers: dict[int, Sto
         history=history,
         last_checked=history[-1].at if history else None,
         best_offer=best_offers.get(destination.id),
+        insights=db.latest_insights(destination.id),
         below_target=bool(
             current is not None and destination.target_price and current <= destination.target_price
         ),

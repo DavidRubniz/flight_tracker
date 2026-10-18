@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from flight_tracker.models import AlertKind, PricePoint
+from flight_tracker.models import AlertKind, AppSettings, PriceInsights, PricePoint
 
 Trend = Literal["up", "down", "flat", "unknown"]
 
@@ -20,26 +20,39 @@ class AlertDecision:
     reason: str
 
 
-def evaluate_price(
-    price: float,
-    *,
-    target_price: float | None,
-    average_price: float | None,
-    sample_size: int,
-    deal_drop_percent: float,
-) -> AlertDecision | None:
-    """Decide whether ``price`` deserves an alert.
+@dataclass(frozen=True, slots=True)
+class PriceContext:
+    """Everything known about a destination's price apart from the current offer."""
 
-    * ``target`` - price is at or below the user's ceiling for this destination.
-    * ``deal``   - price is ``deal_drop_percent``% below the recent average
+    target_price: float | None = None
+    average_price: float | None = None
+    sample_size: int = 0
+    insights: PriceInsights | None = None
+
+
+def evaluate_price(price: float, context: PriceContext, settings: AppSettings) -> AlertDecision | None:
+    """Decide whether ``price`` deserves an alert. Rules, in priority order:
+
+    * ``target``     - price is at or below the user's ceiling for this destination.
+    * ``deal``       - price is ``deal_drop_percent``% below our own recent average
       (only once there is enough history to trust the average).
+    * ``google_low`` - Google Flights rates the price as low for this route. Works from
+      the very first scan, since it relies on Google's history rather than ours.
     """
-    if target_price is not None and price <= target_price:
-        return AlertDecision("target", f"המחיר ירד מתחת ליעד שהגדרת ({target_price:,.0f})")
-    if average_price and sample_size >= MIN_SAMPLES_FOR_DEAL:
-        drop = (1 - price / average_price) * 100
-        if drop >= deal_drop_percent:
-            return AlertDecision("deal", f"מציאה! זול ב-{drop:.0f}% מהממוצע ({average_price:,.0f})")
+    target, average, insights = context.target_price, context.average_price, context.insights
+    if target is not None and price <= target:
+        return AlertDecision("target", f"המחיר ירד מתחת ליעד שהגדרת ({target:,.0f})")
+    if average and context.sample_size >= MIN_SAMPLES_FOR_DEAL:
+        drop = (1 - price / average) * 100
+        if drop >= settings.deal_drop_percent:
+            return AlertDecision("deal", f"מציאה! זול ב-{drop:.0f}% מהממוצע ({average:,.0f})")
+    if settings.alert_on_google_low and insights and insights.price_level == "low":
+        typical = (
+            f" (טווח רגיל: {insights.typical_low:,.0f}–{insights.typical_high:,.0f})"
+            if insights.typical_low is not None and insights.typical_high is not None
+            else ""
+        )
+        return AlertDecision("google_low", f"Google מסמנת את המחיר כנמוך מהרגיל{typical}")
     return None
 
 

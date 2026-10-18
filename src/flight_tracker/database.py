@@ -19,6 +19,7 @@ from flight_tracker.models import (
     DestinationCreate,
     DestinationUpdate,
     FlightOffer,
+    PriceInsights,
     PricePoint,
     Segment,
     StoredOffer,
@@ -78,6 +79,15 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+# Lightweight schema migrations: (table, column, type) added after the table's first
+# release. Applied on every start when missing, so existing databases keep their data.
+# Append new columns here instead of editing _SCHEMA.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("snapshots", "price_level", "TEXT"),
+    ("snapshots", "typical_low", "REAL"),
+    ("snapshots", "typical_high", "REAL"),
+)
+
 _DEFAULT_DESTINATIONS: tuple[DestinationCreate, ...] = (
     DestinationCreate(code="ATH", target_price=180, max_stops=0, trip_nights=5),
     DestinationCreate(code="LHR", target_price=350, max_stops=1, trip_nights=7),
@@ -111,9 +121,18 @@ class Database:
         self._lock = threading.RLock()
         with self._tx() as cur:
             cur.executescript(_SCHEMA)
+            self._migrate(cur)
         if not self.list_destinations():
             for item in _DEFAULT_DESTINATIONS:
                 self.add_destination(item)
+
+    @staticmethod
+    def _migrate(cur: sqlite3.Cursor) -> None:
+        """Add columns introduced after a table was first created (idempotent)."""
+        for table, column, sql_type in _ADDED_COLUMNS:
+            existing = {row[1] for row in cur.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
 
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Cursor]:
@@ -235,15 +254,29 @@ class Database:
 
     # ------------------------------------------------------------------ prices & offers
 
-    def record_scan(self, destination_id: int, offers: Sequence[FlightOffer]) -> int:
+    def record_scan(
+        self,
+        destination_id: int,
+        offers: Sequence[FlightOffer],
+        insights: PriceInsights | None = None,
+    ) -> int:
         """Store a scan result. ``offers`` must be non-empty and sorted by price."""
         if not offers:
             raise ValueError("record_scan requires at least one offer")
         now = utcnow().isoformat()
         with self._tx() as cur:
             cur.execute(
-                "INSERT INTO snapshots (destination_id, checked_at, min_price, currency) VALUES (?, ?, ?, ?)",
-                (destination_id, now, offers[0].price, offers[0].currency),
+                """INSERT INTO snapshots (destination_id, checked_at, min_price, currency,
+                   price_level, typical_low, typical_high) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    destination_id,
+                    now,
+                    offers[0].price,
+                    offers[0].currency,
+                    insights.price_level if insights else None,
+                    insights.typical_low if insights else None,
+                    insights.typical_high if insights else None,
+                ),
             )
             snapshot_id = int(cur.lastrowid or 0)
             cur.executemany(
@@ -291,6 +324,20 @@ class Database:
     def last_scan_at(self) -> datetime | None:
         rows = self._query("SELECT MAX(checked_at) AS last FROM snapshots")
         return _to_dt(rows[0]["last"]) if rows and rows[0]["last"] else None
+
+    def latest_insights(self, destination_id: int) -> PriceInsights | None:
+        rows = self._query(
+            "SELECT price_level, typical_low, typical_high FROM snapshots "
+            "WHERE destination_id = ? ORDER BY id DESC LIMIT 1",
+            (destination_id,),
+        )
+        if not rows or all(rows[0][key] is None for key in ("price_level", "typical_low", "typical_high")):
+            return None
+        return PriceInsights(
+            price_level=rows[0]["price_level"],
+            typical_low=rows[0]["typical_low"],
+            typical_high=rows[0]["typical_high"],
+        )
 
     def lowest_price(self, destination_id: int) -> tuple[float, datetime] | None:
         rows = self._query(

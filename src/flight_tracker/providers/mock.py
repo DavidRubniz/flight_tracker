@@ -11,7 +11,14 @@ import itertools
 import random
 from datetime import date, datetime, time, timedelta
 
-from flight_tracker.models import FlightOffer, SearchQuery, Segment
+from flight_tracker.models import (
+    FlightOffer,
+    PriceInsights,
+    PriceLevel,
+    SearchQuery,
+    SearchResult,
+    Segment,
+)
 from flight_tracker.providers.base import FlightProvider
 
 _BASE_PRICE: dict[str, float] = {
@@ -110,7 +117,7 @@ class MockProvider(FlightProvider):
     name = "mock"
     max_retries = 1
 
-    async def search(self, query: SearchQuery) -> list[FlightOffer]:
+    async def search(self, query: SearchQuery) -> SearchResult:
         await asyncio.sleep(0.05)  # simulate latency
         # Seed by route + date + 3-hour bucket, so prices change slowly between scans.
         bucket = datetime.now().strftime("%Y%m%d") + str(datetime.now().hour // 3)
@@ -139,7 +146,16 @@ class MockProvider(FlightProvider):
             if query.destination not in (h1, h2):
                 price = base * urgency * round_trip * flash_sale * rng.uniform(0.6, 0.9)
                 offers.append(self._build(query, price, [(c1, a1), (c2, a2), (c2, a2)], [h1, h2], rng))
-        return sorted(offers, key=lambda o: o.price)
+        offers.sort(key=lambda o: o.price)
+        return SearchResult(offers=offers, insights=self._insights(base * urgency * round_trip, offers))
+
+    @staticmethod
+    def _insights(typical: float, offers: list[FlightOffer]) -> PriceInsights:
+        """Mimic Google's price insights: a typical range and where the cheapest offer falls."""
+        low, high = round(typical * 0.75), round(typical * 1.1)
+        cheapest = offers[0].price if offers else typical
+        level: PriceLevel = "low" if cheapest < low else "high" if cheapest > high else "typical"
+        return PriceInsights(price_level=level, typical_low=low, typical_high=high)
 
     def _build(
         self,

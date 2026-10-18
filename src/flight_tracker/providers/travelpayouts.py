@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from flight_tracker.models import FlightOffer, SearchQuery, Segment
+from flight_tracker.models import FlightOffer, SearchQuery, SearchResult, Segment
 from flight_tracker.providers.base import FlightProvider, ProviderError
 
 _URL = "https://api.travelpayouts.com/aviasales/v3/prices_for_dates"
@@ -34,7 +34,7 @@ class TravelpayoutsProvider(FlightProvider):
         super().__init__(client)
         self._token = token
 
-    async def search(self, query: SearchQuery) -> list[FlightOffer]:
+    async def search(self, query: SearchQuery) -> SearchResult:
         params: dict[str, str | int] = {
             "origin": query.origin,
             "destination": query.destination,
@@ -53,7 +53,7 @@ class TravelpayoutsProvider(FlightProvider):
         if payload.get("success") is False:
             raise ProviderError(f"travelpayouts: {payload.get('error', 'request failed')}")
         offers = [o for raw in (payload.get("data") or []) if (o := self._parse(raw, query))]
-        return [o for o in offers if o.stops <= query.max_stops]
+        return SearchResult(offers=[o for o in offers if o.stops <= query.max_stops])
 
     def _parse(self, raw: dict[str, Any], query: SearchQuery) -> FlightOffer | None:
         price = raw.get("price")
