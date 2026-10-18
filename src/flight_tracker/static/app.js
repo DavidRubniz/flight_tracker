@@ -98,6 +98,8 @@ function tracker() {
     detailOffers: [],
     toast: "",
     _pollTimer: null,
+    _seenFinish: undefined, // last scan finish time the UI has rendered
+    _awaitingScan: false, // a scan was requested; poll quickly until it finishes
 
     // ------------------------------------------------------------ lifecycle
     async init() {
@@ -118,17 +120,28 @@ function tracker() {
       this.$nextTick(() => rows.forEach((r) => drawChart(`spark-${r.destination.id}`, r.history, { sparkline: true })));
     },
 
+    // Detect finished scans by comparing finish times (not the "running" flag): a fast background
+    // scan can start and finish entirely between two polls.
     async pollStatus() {
-      const wasRunning = this.status.running;
       try {
         this.status = await api.get("/status");
-        if (wasRunning && !this.status.running) {
+        const finished = this.status.last_finished ?? null;
+        if (this._seenFinish === undefined) {
+          this._seenFinish = finished; // first poll after page load - data is already fresh
+        } else if (finished !== this._seenFinish) {
+          this._seenFinish = finished;
+          this._awaitingScan = false;
           await this.refresh();
           this.notify("הסריקה הסתיימה ✓");
         }
       } catch { /* server restarting - try again on next tick */ }
       clearTimeout(this._pollTimer);
-      this._pollTimer = setTimeout(() => this.pollStatus(), this.status.running ? STATUS_POLL_BUSY_MS : STATUS_POLL_IDLE_MS);
+      const busy = this.status.running || this._awaitingScan;
+      this._pollTimer = setTimeout(() => this.pollStatus(), busy ? STATUS_POLL_BUSY_MS : STATUS_POLL_IDLE_MS);
+    },
+    watchScan(accepted) {
+      this._awaitingScan = accepted;
+      this.pollStatus();
     },
 
     // ------------------------------------------------------------ computed
@@ -150,16 +163,14 @@ function tracker() {
       await this.run(async () => {
         const res = await api.post("/scan");
         this.notify(res.message);
-        this.status.running = res.accepted || this.status.running;
-        this.pollStatus();
+        this.watchScan(res.accepted);
       });
     },
     async scanOne(destination) {
       await this.run(async () => {
         const res = await api.post(`/scan/${destination.id}`);
         this.notify(`${destination.name}: ${res.message}`);
-        this.status.running = res.accepted || this.status.running;
-        this.pollStatus();
+        this.watchScan(res.accepted);
       });
     },
     async openDetails(row) {
@@ -204,7 +215,7 @@ function tracker() {
         const offsets = this.offsetsText.split(",").map((s) => parseInt(s, 10)).filter(Number.isFinite);
         this.settings = await api.put("/settings", { ...this.settings, date_offsets_days: offsets });
         this.offsetsText = this.settings.date_offsets_days.join(", ");
-        this.status = await api.get("/status");
+        this.pollStatus(); // picks up the rescheduled next run
         this.notify("ההגדרות נשמרו ✓");
       });
     },
