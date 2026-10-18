@@ -96,6 +96,7 @@
                   <span x-text="meta.origin + ' → ' + row.destination.code"></span> ·
                   <span x-text="row.destination.trip_nights ? row.destination.trip_nights + ' לילות' : 'כיוון אחד'"></span> ·
                   <span x-text="stopsLabel(row.destination.max_stops, true)"></span>
+                  <span x-show="row.destination.max_duration_hours" x-text="' · עד ' + row.destination.max_duration_hours + ' שעות טיסה'"></span>
                 </p>
               </div>
               <div class="flex flex-col items-end gap-1">
@@ -229,7 +230,7 @@
       <div class="card p-5 lg:col-span-3">
         <h2 class="mb-4 text-lg font-bold">יעדים במעקב</h2>
 
-        <form @submit.prevent="addDestination()" class="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-white/[0.03] p-3 sm:grid-cols-6">
+        <form @submit.prevent="addDestination()" class="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-white/[0.03] p-3 sm:grid-cols-7">
           <label class="col-span-2 sm:col-span-2"><span class="field-label">יעד (IATA) או אזור</span>
             <input x-model="newDest.code" list="dest-options" required placeholder="LHR / EUROPE" class="input uppercase" />
             <datalist id="dest-options">
@@ -241,13 +242,14 @@
           <label><span class="field-label">עצירות</span>
             <select x-model.number="newDest.max_stops" class="input"><option value="0">ישיר</option><option value="1">עד 1</option><option value="2">עד 2</option></select></label>
           <label><span class="field-label">לילות (0=כיוון אחד)</span><input x-model.number="newDest.trip_nights" type="number" min="0" max="60" class="input" /></label>
+          <label><span class="field-label">משך טיסה מקס' (שעות)</span><input x-model.number="newDest.max_duration_hours" type="number" min="1" max="72" class="input" placeholder="ללא" /></label>
           <button class="btn-primary self-end justify-center">+ הוסף</button>
         </form>
 
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="text-right text-xs text-slate-400">
-              <tr><th class="p-2">יעד</th><th class="p-2">מחיר יעד</th><th class="p-2">עצירות</th><th class="p-2">לילות</th><th class="p-2">פעיל</th><th></th></tr>
+              <tr><th class="p-2">יעד</th><th class="p-2">מחיר יעד</th><th class="p-2">עצירות</th><th class="p-2">לילות</th><th class="p-2" title="משך הטיסה המקסימלי לכיוון, כולל המתנות">משך מקס' (ש')</th><th class="p-2">פעיל</th><th></th></tr>
             </thead>
             <tbody>
               <template x-for="d in destinations" :key="d.id">
@@ -259,6 +261,8 @@
                     <option value="0">0</option><option value="1">1</option><option value="2">2</option></select></td>
                   <td class="p-2"><input type="number" min="0" max="60" class="input w-20" :value="d.trip_nights ?? 0"
                          @change="+$event.target.value ? updateDestination(d, { trip_nights: +$event.target.value, one_way: false }) : updateDestination(d, { one_way: true })" /></td>
+                  <td class="p-2"><input type="number" min="1" max="72" class="input w-20" placeholder="ללא" :value="d.max_duration_hours ?? ''"
+                         @change="updateDestination(d, $event.target.value ? { max_duration_hours: +$event.target.value } : { clear_max_duration: true })" /></td>
                   <td class="p-2"><button type="button" class="toggle" :class="d.enabled && 'toggle-on'" @click="updateDestination(d, { enabled: !d.enabled })"><span></span></button></td>
                   <td class="p-2 text-left whitespace-nowrap">
                     <button class="icon-btn" title="סרוק יעד זה" @click="scanOne(d)">⟳</button>

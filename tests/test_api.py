@@ -29,8 +29,11 @@ def test_destination_lifecycle(client: TestClient) -> None:
     assert client.post("/api/destinations", json={"code": "MXP"}).status_code == 409
     assert client.post("/api/destinations", json={"code": "TOOLONG"}).status_code == 422
 
-    patched = client.patch(f"/api/destinations/{dest_id}", json={"max_stops": 0})
+    patched = client.patch(f"/api/destinations/{dest_id}", json={"max_stops": 0, "max_duration_hours": 10})
     assert patched.json()["max_stops"] == 0
+    assert patched.json()["max_duration_hours"] == 10
+    too_long = client.patch(f"/api/destinations/{dest_id}", json={"max_duration_hours": 100})
+    assert too_long.status_code == 422
 
     assert client.delete(f"/api/destinations/{dest_id}").status_code == 204
     assert client.delete(f"/api/destinations/{dest_id}").status_code == 404

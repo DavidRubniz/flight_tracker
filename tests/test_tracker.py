@@ -5,6 +5,7 @@ import httpx
 from flight_tracker.database import Database
 from flight_tracker.models import (
     DestinationCreate,
+    DestinationUpdate,
     FlightOffer,
     PriceInsights,
     SearchQuery,
@@ -116,3 +117,43 @@ async def test_google_insights_are_stored_and_alert_on_first_scan(db: Database) 
     assert db.latest_insights(dest_id) == insights
     assert [a.kind for a in db.list_alerts()] == ["google_low"]
     assert len(notifier.sent) == 1
+
+
+class TwoOffersProvider(FakeProvider):
+    """A cheap offer with a 24h layover and a pricier short one."""
+
+    async def search(self, query: SearchQuery) -> SearchResult:
+        def offer(price: float, minutes: int) -> FlightOffer:
+            return FlightOffer(
+                provider=self.name,
+                destination_code=query.destination,
+                price=price,
+                currency="USD",
+                airlines=[f"{price}"],
+                stops=1,
+                outbound=[Segment(origin="TLV", destination=query.destination, airline=f"{price}")],
+                depart_date=query.depart_date,
+                duration_minutes=minutes,
+            )
+
+        return SearchResult(offers=[offer(526, 1485), offer(631, 580)])
+
+
+async def test_offers_longer_than_the_limit_are_ignored(db: Database) -> None:
+    dest_id = _only(db, "LHR", target=None)
+    db.update_destination(dest_id, DestinationUpdate(max_duration_hours=12))
+    provider = TwoOffersProvider()
+    await _tracker(db, provider, FakeNotifier()).scan_all()
+
+    assert [p.price for p in db.price_history(dest_id)] == [631]
+    assert all(q.max_duration_minutes == 720 for q in provider.calls)
+
+
+async def test_reports_when_every_offer_is_too_long(db: Database) -> None:
+    dest_id = _only(db, "LHR", target=None)
+    db.update_destination(dest_id, DestinationUpdate(max_duration_hours=5))
+    tracker = _tracker(db, TwoOffersProvider(), FakeNotifier())
+    await tracker.scan_all()
+
+    assert db.price_history(dest_id) == []
+    assert any("עד 5 שעות" in e for e in tracker.status.errors)

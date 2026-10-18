@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from flight_tracker.models import AppSettings, PriceInsights, PricePoint
+from flight_tracker.models import AppSettings, FlightOffer, PriceInsights, PricePoint, Segment
 from flight_tracker.services.pricing import (
     PriceContext,
     describe_stops,
     evaluate_price,
     is_repeat_alert,
     price_trend,
+    within_duration,
 )
 
 SETTINGS = AppSettings(deal_drop_percent=25, alert_on_google_low=True)
@@ -90,3 +91,29 @@ def test_trend_directions() -> None:
     assert price_trend(_history(100, 90))[0] == "down"
     assert price_trend(_history(100, 110))[0] == "up"
     assert price_trend(_history(100, 101))[0] == "flat"
+
+
+@pytest.mark.parametrize(
+    ("duration", "max_hours", "expected"),
+    [
+        (600, 12, True),
+        (720, 12, True),
+        (721, 12, False),
+        (1485, 12, False),
+        (None, 12, True),
+        (1485, None, True),
+    ],
+)
+def test_within_duration(duration: int | None, max_hours: float | None, expected: bool) -> None:
+    offer = FlightOffer(
+        provider="t",
+        destination_code="LHR",
+        price=500,
+        currency="USD",
+        airlines=["X"],
+        stops=1,
+        outbound=[Segment(origin="TLV", destination="LHR", airline="X")],
+        depart_date=date(2026, 12, 2),
+        duration_minutes=duration,
+    )
+    assert within_duration(offer, max_hours) is expected

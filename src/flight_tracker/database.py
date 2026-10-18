@@ -86,6 +86,7 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("snapshots", "price_level", "TEXT"),
     ("snapshots", "typical_low", "REAL"),
     ("snapshots", "typical_high", "REAL"),
+    ("destinations", "max_duration_hours", "REAL"),
 )
 
 _DEFAULT_DESTINATIONS: tuple[DestinationCreate, ...] = (
@@ -167,6 +168,7 @@ class Database:
             target_price=row["target_price"],
             max_stops=row["max_stops"],
             trip_nights=row["trip_nights"],
+            max_duration_hours=row["max_duration_hours"],
             enabled=bool(row["enabled"]),
             created_at=_to_dt(row["created_at"]),
         )
@@ -185,8 +187,9 @@ class Database:
         with self._tx() as cur:
             cur.execute(
                 """INSERT INTO destinations
-                   (code, name, is_region, target_price, max_stops, trip_nights, enabled, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (code, name, is_region, target_price, max_stops, trip_nights,
+                    max_duration_hours, enabled, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     data.code,
                     data.name or display_name(data.code),
@@ -194,6 +197,7 @@ class Database:
                     data.target_price,
                     data.max_stops,
                     data.trip_nights,
+                    data.max_duration_hours,
                     int(data.enabled),
                     utcnow().isoformat(),
                 ),
@@ -212,15 +216,19 @@ class Database:
         nights = None if data.one_way else (data.trip_nights or current.trip_nights)
         if data.one_way is False and nights is None:
             nights = 7
+        max_hours = (
+            None if data.clear_max_duration else (data.max_duration_hours or current.max_duration_hours)
+        )
         with self._tx() as cur:
             cur.execute(
                 """UPDATE destinations SET name = ?, target_price = ?, max_stops = ?,
-                   trip_nights = ?, enabled = ? WHERE id = ?""",
+                   trip_nights = ?, max_duration_hours = ?, enabled = ? WHERE id = ?""",
                 (
                     data.name or current.name,
                     target,
                     current.max_stops if data.max_stops is None else data.max_stops,
                     nights,
+                    max_hours,
                     int(current.enabled if data.enabled is None else data.enabled),
                     destination_id,
                 ),

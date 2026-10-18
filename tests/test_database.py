@@ -42,6 +42,14 @@ def test_destination_crud(db: Database) -> None:
     assert updated.target_price is None
     assert updated.trip_nights is None
 
+    limited = db.update_destination(created.id, DestinationUpdate(max_duration_hours=12))
+    assert limited is not None
+    assert limited.max_duration_hours == 12
+    assert limited.trip_nights is None  # unrelated fields keep their values
+    cleared = db.update_destination(created.id, DestinationUpdate(clear_max_duration=True))
+    assert cleared is not None
+    assert cleared.max_duration_hours is None
+
     assert db.delete_destination(created.id)
     assert db.get_destination(created.id) is None
 

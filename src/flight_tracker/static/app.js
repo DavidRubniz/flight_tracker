@@ -93,7 +93,7 @@ function tracker() {
     settings: {},
     offsetsText: "",
     offerFilter: { destination: 0, maxStops: 9 },
-    newDest: { code: "", target_price: null, max_stops: 1, trip_nights: 7 },
+    newDest: { code: "", target_price: null, max_stops: 1, trip_nights: 7, max_duration_hours: null },
     details: null,
     detailOffers: [],
     toast: "",
@@ -186,9 +186,10 @@ function tracker() {
           target_price: this.newDest.target_price || null,
           max_stops: this.newDest.max_stops,
           trip_nights: this.newDest.trip_nights || null,
+          max_duration_hours: this.newDest.max_duration_hours || null,
         };
         await api.post("/destinations", body);
-        this.newDest = { code: "", target_price: null, max_stops: 1, trip_nights: 7 };
+        this.newDest = { code: "", target_price: null, max_stops: 1, trip_nights: 7, max_duration_hours: null };
         await this.refresh();
         this.notify("היעד נוסף ✓");
       });

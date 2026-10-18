@@ -90,6 +90,13 @@ async def test_serpapi_tolerates_missing_or_odd_insights(client: httpx.AsyncClie
 
 
 @respx.mock
+async def test_serpapi_sends_max_duration(client: httpx.AsyncClient) -> None:
+    route = respx.get(SERPAPI_URL).respond(json=SERPAPI_PAYLOAD)
+    await SerpApiProvider(client, "key").search(QUERY.model_copy(update={"max_duration_minutes": 720}))
+    assert route.calls.last.request.url.params["max_duration"] == "720"
+
+
+@respx.mock
 async def test_auth_error_is_not_retried(client: httpx.AsyncClient) -> None:
     route = respx.get(SERPAPI_URL).respond(401)
     with pytest.raises(ProviderAuthError):

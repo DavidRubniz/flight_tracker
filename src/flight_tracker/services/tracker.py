@@ -27,6 +27,7 @@ from flight_tracker.services.pricing import (
     describe_stops,
     evaluate_price,
     is_repeat_alert,
+    within_duration,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,9 @@ class PriceTracker:
                     if destination.trip_nights
                     else None,
                     max_stops=destination.max_stops,
+                    max_duration_minutes=round(destination.max_duration_hours * 60)
+                    if destination.max_duration_hours
+                    else None,
                     currency=self._currency,
                 )
 
@@ -122,7 +126,7 @@ class PriceTracker:
         offers: dict[tuple[str, str, str, float], FlightOffer] = {}
         # Insights describe one route/date, so keep those of the search that found the cheapest offer.
         best_insights: tuple[float, PriceInsights] | None = None
-        failures = 0
+        failures = too_long = 0
         for query, result in zip(queries, results, strict=True):
             if isinstance(result, ProviderAuthError):
                 raise ScanAbortedError(str(result)) from result
@@ -136,10 +140,12 @@ class PriceTracker:
                 failures += 1
                 logger.exception("Unexpected error for %s", query.destination, exc_info=result)
                 continue
-            for offer in result.offers:
+            allowed = [o for o in result.offers if within_duration(o, destination.max_duration_hours)]
+            too_long += len(result.offers) - len(allowed)
+            for offer in allowed:
                 offers.setdefault(offer.dedupe_key, offer)
-            if result.insights and result.offers:
-                cheapest = min(o.price for o in result.offers)
+            if result.insights and allowed:
+                cheapest = min(o.price for o in allowed)
                 if best_insights is None or cheapest < best_insights[0]:
                     best_insights = (cheapest, result.insights)
 
@@ -147,6 +153,11 @@ class PriceTracker:
             self.status.errors.append(f"{destination.name}: {failures}/{len(queries)} חיפושים נכשלו")
         if not offers:
             logger.info("No offers found for %s", destination.code)
+            if too_long:
+                self.status.errors.append(
+                    f"{destination.name}: אין טיסות עד {destination.max_duration_hours:g} שעות "
+                    f"({too_long} ארוכות יותר סוננו)"
+                )
             return
 
         ranked = sorted(offers.values(), key=lambda o: o.price)[:OFFERS_KEPT_PER_SCAN]

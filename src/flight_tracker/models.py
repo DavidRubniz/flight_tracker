@@ -72,6 +72,7 @@ class SearchQuery(BaseModel):
     depart_date: date
     return_date: date | None = None
     max_stops: int = 2
+    max_duration_minutes: int | None = None
     currency: str = "USD"
     adults: int = 1
 
@@ -94,6 +95,7 @@ class Destination(BaseModel):
     target_price: float | None
     max_stops: int
     trip_nights: int | None
+    max_duration_hours: float | None
     enabled: bool
     created_at: datetime
 
@@ -104,6 +106,8 @@ class DestinationCreate(BaseModel):
     target_price: float | None = Field(default=None, gt=0)
     max_stops: int = Field(default=1, ge=0, le=2)
     trip_nights: int | None = Field(default=7, ge=1, le=60)
+    # Longest acceptable outbound journey incl. layovers; None = no limit.
+    max_duration_hours: float | None = Field(default=None, ge=1, le=72)
     enabled: bool = True
 
     @field_validator("code")
@@ -119,6 +123,8 @@ class DestinationUpdate(BaseModel):
     max_stops: int | None = Field(default=None, ge=0, le=2)
     trip_nights: int | None = Field(default=None, ge=1, le=60)
     one_way: bool | None = None
+    max_duration_hours: float | None = Field(default=None, ge=1, le=72)
+    clear_max_duration: bool = False
     enabled: bool | None = None
 
 

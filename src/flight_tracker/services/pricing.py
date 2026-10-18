@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from flight_tracker.models import AlertKind, AppSettings, PriceInsights, PricePoint
+from flight_tracker.models import AlertKind, AppSettings, FlightOffer, PriceInsights, PricePoint
 
 Trend = Literal["up", "down", "flat", "unknown"]
 
@@ -54,6 +54,16 @@ def evaluate_price(price: float, context: PriceContext, settings: AppSettings) -
         )
         return AlertDecision("google_low", f"Google מסמנת את המחיר כנמוך מהרגיל{typical}")
     return None
+
+
+def within_duration(offer: FlightOffer, max_hours: float | None) -> bool:
+    """Whether the outbound journey (incl. layovers) fits the destination's limit.
+
+    Offers whose duration is unknown are kept: better a long flight than a missed deal.
+    """
+    if max_hours is None or offer.duration_minutes is None:
+        return True
+    return offer.duration_minutes <= max_hours * 60
 
 
 def is_repeat_alert(price: float, last_alert_price: float | None) -> bool:
